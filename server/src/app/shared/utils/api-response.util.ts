@@ -5,7 +5,7 @@ class ApiResponse {
     res: Response,
     statusCode: number,
     message: string,
-    data: any = null,
+    data: unknown = null,
   ) {
     return res.status(statusCode).json({
       status: statusCode,
@@ -15,15 +15,15 @@ class ApiResponse {
     });
   }
 
-  static ok(res: Response, message = "OK", data: any = null) {
+  static ok(res: Response, message = "OK", data: unknown = null) {
     return ApiResponse.send(res, 200, message, data);
   }
 
-  static created(res: Response, message = "Created", data: any = null) {
+  static created(res: Response, message = "Created", data: unknown = null) {
     return ApiResponse.send(res, 201, message, data);
   }
 
-  static accepted(res: Response, message = "Accepted", data: any = null) {
+  static accepted(res: Response, message = "Accepted", data: unknown = null) {
     return ApiResponse.send(res, 202, message, data);
   }
 

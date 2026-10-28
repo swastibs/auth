@@ -1,7 +1,7 @@
 import Joi, { type ObjectSchema, type ValidationResult } from "joi";
 
 class BaseDto {
-  static schema: ObjectSchema = Joi.object({});
+  static readonly schema: ObjectSchema = Joi.object({});
 
   static validate(data: unknown): {
     errors: string[] | null;
