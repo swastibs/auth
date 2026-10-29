@@ -43,3 +43,21 @@ if (!resolvedMongoUri) {
 }
 
 export const MONGO_URI: string = resolvedMongoUri;
+
+/* --------------------------- JWT SECRETS --------------------------- */
+const requireEnv = (key: string): string => {
+  const value = process.env[key];
+  if (!value) throw new Error(`Missing required env var: ${key}`);
+  return value;
+};
+
+export const JWT_ACCESS_SECRET: string = requireEnv("JWT_ACCESS_SECRET");
+export const JWT_ACCESS_EXPIRE: string =
+  process.env.JWT_ACCESS_EXPIRE ?? "15m";
+
+export const JWT_REFRESH_SECRET: string = requireEnv("JWT_REFRESH_SECRET");
+export const JWT_REFRESH_EXPIRE: string =
+  process.env.JWT_REFRESH_EXPIRE ?? "7d";
+
+export const BCRYPT_SALT_ROUNDS: number =
+  Number(process.env.BCRYPT_SALT_ROUNDS) || 10;

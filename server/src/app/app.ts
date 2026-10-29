@@ -4,6 +4,7 @@ import morgan from "morgan";
 import cors from "cors";
 
 import { allowedOrigins } from "./shared/config/cors.config.js";
+import authRoutes from "./modules/auth/auth.routes.js";
 import {
   errorHandler,
   notFound,
@@ -32,6 +33,7 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 /* ── Routes ──────────────────────────────────────────────────── */
 // Register your routers here, e.g.:
 // app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/auth", authRoutes);
 
 /* ── 404 + Global error handler (MUST be last) ───────────────── */
 app.use(notFound);
