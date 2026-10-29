@@ -157,7 +157,7 @@ function assertApiError(error, statusCode, message) {
   return true;
 }
 
-async function postToApp(t, body) {
+async function requestApp(t, path, { method = "GET", body } = {}) {
   const server = createServer(app);
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -172,11 +172,19 @@ async function postToApp(t, body) {
 
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  return fetch(`http://127.0.0.1:${address.port}/api/v1/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+  return fetch(`http://127.0.0.1:${address.port}${path}`, {
+    method,
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
   });
+}
+
+function postToApp(t, body) {
+  return requestApp(t, "/api/v1/auth/register", { method: "POST", body });
 }
 
 test("DTO normalizes input, defaults timezone, and strips unknown fields", () => {
@@ -389,6 +397,20 @@ test("registration route returns Joi 400 before querying the user model", async 
   assert.match(body.message, /at least 8/i);
   assert.match(body.message, /at least one letter and one number/i);
   assert.equal(state.findQueries.length, 0);
+});
+
+test("health route always returns success and formatted process uptime", async (t) => {
+  const response = await requestApp(t, "/health");
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.message, "server is running");
+  assert.match(
+    body.data.uptime,
+    /^(?:under 1s|[1-9]\d*(?:mo|y|d|h|m|s)(?:, [1-9]\d*(?:mo|y|d|h|m|s))*)$/,
+  );
 });
 
 test("registration route reaches the handler and returns 201", async (t) => {

@@ -279,9 +279,6 @@ const UserSchema = new Schema<IUser, UserModel, IUserMethods>(
     subscription: { type: SubscriptionSchema, default: () => ({}) },
     referralCode: {
       type: String,
-      unique: true,
-      index: true,
-      sparse: true,
     },
     referredBy: { type: Schema.Types.ObjectId, ref: "User" },
     totalXp: { type: Number, default: 0, min: 0 },
