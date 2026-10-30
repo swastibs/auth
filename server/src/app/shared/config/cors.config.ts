@@ -6,9 +6,18 @@ export const CORS_ORIGINS: Record<NodeEnv, string[]> = {
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:8080",
+    "https://atomictask.vercel.app",
   ],
-  [NodeEnv.STAGE]: ["https://stage.yourdomain.com"],
-  [NodeEnv.PROD]: ["https://yourdomain.com"],
+  [NodeEnv.STAGE]: [
+    "https://atomictask.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ],
+  [NodeEnv.PROD]: [
+    "https://atomictask.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ],
 };
 
 export const allowedOrigins: string[] = CORS_ORIGINS[NODE_ENV];

@@ -1,15 +1,11 @@
 import axios from "axios";
+import { API_BASE_URL } from "../config/env.js";
 import {
   getAccessToken,
   getRefreshToken,
   setTokens,
   clearTokens,
 } from "../utils/token.js";
-
-const env =
-  typeof import.meta !== "undefined" && import.meta.env
-    ? import.meta.env
-    : (typeof globalThis !== "undefined" && globalThis.process?.env) || {};
 
 const normalizeApiBaseUrl = (baseUrl) => {
   const raw = String(baseUrl || "").trim();
@@ -22,9 +18,7 @@ const normalizeApiBaseUrl = (baseUrl) => {
   return `${trimmed}/api/v1`;
 };
 
-const API_URL = normalizeApiBaseUrl(
-  env.VITE_API_BASE_URL || env.VITE_API_URL || "http://localhost:8080/api/v1",
-);
+const API_URL = normalizeApiBaseUrl(API_BASE_URL);
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
