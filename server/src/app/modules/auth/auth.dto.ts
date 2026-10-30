@@ -50,3 +50,12 @@ export const refreshTokenSchema = Joi.object({
 export class RefreshDto extends BaseDto {
   static override readonly schema = refreshTokenSchema;
 }
+
+/* ── Logout schema ───────────────────────────────────────────────────── */
+export const logoutSchema = Joi.object({
+  refreshToken: Joi.string().trim().min(20).max(4096).required(),
+});
+
+export class LogoutDto extends BaseDto {
+  static override readonly schema = logoutSchema;
+}

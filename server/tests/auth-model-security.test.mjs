@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 process.env.NODE_ENV = "development";
-process.env.MONGO_URI_DEV = "mongodb://127.0.0.1:27017/atomictasks_test";
+process.env.MONGO_URI_DEV = "mongodb://localhost:27017/atomictasks_test";
 process.env.JWT_ACCESS_SECRET = "test-access-secret-not-for-production";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret-not-for-production";
 process.env.JWT_ACCESS_EXPIRE = "15m";
@@ -120,7 +120,7 @@ test("refresh sessions store token hashes, prune expired sessions, and cap devic
 
   await user.addRefreshTokenSession("plain-refresh-token", {
     device: "desktop",
-    ip: "127.0.0.1",
+    ip: "localhost",
     userAgent: "test-agent",
   });
 
@@ -140,7 +140,7 @@ test("refresh sessions store token hashes, prune expired sessions, and cap devic
     createHash("sha256").update("plain-refresh-token").digest("hex"),
   );
   assert.equal(newest.device, "desktop");
-  assert.equal(newest.ip, "127.0.0.1");
+  assert.equal(newest.ip, "localhost");
   assert.equal(newest.userAgent, "test-agent");
   assert.ok(newest.expiresAt > new Date(now + 6 * 86_400_000));
 });

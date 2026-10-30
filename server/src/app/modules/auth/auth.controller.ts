@@ -11,10 +11,12 @@ import ApiResponse from "../../shared/utils/api-response.util.js";
 import catchAsync from "../../shared/utils/catch-async.util.js";
 import {
   JWT_ACCESS_EXPIRE,
+  JWT_ACCESS_SECRET,
   JWT_REFRESH_EXPIRE,
   JWT_REFRESH_SECRET,
 } from "../../shared/config/env.config.js";
 import { emailQueue } from "../../shared/queues/email.queue.js";
+import { blacklistAccessToken } from "../../shared/utils/token-blacklist.util.js";
 
 /** Body shape after route-level validation. */
 interface RegisterBody {
@@ -34,6 +36,10 @@ interface RefreshBody {
   refreshToken: string;
 }
 
+interface LogoutBody {
+  refreshToken: string;
+}
+
 interface RefreshTokenPayload {
   sub: string;
   type: "refresh";
@@ -50,6 +56,29 @@ const INVALID_CREDENTIALS = "Invalid email or password.";
 const LOGIN_SELECT =
   "+password +loginAttempts +lockUntil +refreshTokenSessions";
 const REFRESH_INVALID_MESSAGE = "Invalid or expired refresh token.";
+
+const extractBearerToken = (req: Request): string | null => {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) return null;
+  return header.slice(7).trim() || null;
+};
+
+const extractUserIdFromRefreshToken = (token: string): string | null => {
+  try {
+    const decoded = jwt.verify(token, JWT_REFRESH_SECRET);
+    if (
+      typeof decoded === "object" &&
+      decoded !== null &&
+      decoded.type === "refresh" &&
+      typeof decoded.sub === "string"
+    ) {
+      return decoded.sub;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 /*  REGISTER                                                              */
@@ -382,6 +411,117 @@ export const refresh: RequestHandler = catchAsync(
         refreshTokenExpiresIn: JWT_REFRESH_EXPIRE,
         tokenType: "Bearer" as const,
       },
+    });
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  LOGOUT — revoke one refresh session and blacklist current access token */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const createLogoutHandlers = (
+  blacklistToken: typeof blacklistAccessToken = blacklistAccessToken,
+): { logout: RequestHandler; logoutAll: RequestHandler } => {
+  const blacklistCurrentAccessToken = async (
+    req: Request,
+    action: "logout" | "logoutAll",
+  ): Promise<void> => {
+    const token = extractBearerToken(req);
+    if (!token) return;
+
+    let expiresAtMs: number;
+    try {
+      const decoded = jwt.verify(token, JWT_ACCESS_SECRET);
+      if (
+        typeof decoded !== "object" ||
+        decoded === null ||
+        decoded.type !== "access" ||
+        typeof decoded.exp !== "number"
+      ) {
+        return;
+      }
+      expiresAtMs = decoded.exp * 1000;
+    } catch {
+      return;
+    }
+
+    try {
+      await blacklistToken(token, expiresAtMs);
+    } catch (error) {
+      console.error(
+        chalk.red(`[auth.${action}] Access-token blacklist failed:`),
+        error,
+      );
+    }
+  };
+
+  const logout: RequestHandler = catchAsync(
+    async (req: Request, res: Response): Promise<Response> => {
+      const { refreshToken } = req.body as LogoutBody;
+
+      await blacklistCurrentAccessToken(req, "logout");
+
+      const userId = extractUserIdFromRefreshToken(refreshToken);
+      if (userId) {
+        try {
+          const user = await User.findById(userId).select(
+            "+refreshTokenSessions",
+          );
+          if (user) await user.removeRefreshTokenSession(refreshToken);
+        } catch (error) {
+          console.error(
+            chalk.red("[auth.logout] Refresh-session revoke failed:"),
+            error,
+          );
+        }
+      }
+
+      return ApiResponse.noContent(res);
+    },
+  );
+
+  const logoutAll: RequestHandler = catchAsync(
+    async (req: Request, res: Response): Promise<Response> => {
+      const { refreshToken } = req.body as LogoutBody;
+
+      await blacklistCurrentAccessToken(req, "logoutAll");
+
+      const userId = extractUserIdFromRefreshToken(refreshToken);
+      if (userId) {
+        try {
+          const user = await User.findById(userId).select(
+            "+refreshTokenSessions",
+          );
+          if (user) await user.removeAllRefreshTokenSessions();
+        } catch (error) {
+          console.error(
+            chalk.red("[auth.logoutAll] Session revoke failed:"),
+            error,
+          );
+        }
+      }
+
+      return ApiResponse.noContent(res);
+    },
+  );
+
+  return { logout, logoutAll };
+};
+
+const logoutHandlers = createLogoutHandlers();
+export const logout: RequestHandler = logoutHandlers.logout;
+export const logoutAll: RequestHandler = logoutHandlers.logoutAll;
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  ME — protected profile endpoint                                      */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const me: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    if (!req.user) throw ApiError.unauthorized("Not authenticated.");
+
+    return ApiResponse.ok(res, "User fetched.", {
+      user: req.user.toJSON(),
     });
   },
 );

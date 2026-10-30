@@ -61,3 +61,7 @@ export const JWT_REFRESH_EXPIRE: string =
 
 export const BCRYPT_SALT_ROUNDS: number =
   Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
+
+/* ------------------------------- REDIS -------------------------------- */
+export const REDIS_URL: string =
+  process.env.REDIS_URL ?? "redis://localhost:6379";

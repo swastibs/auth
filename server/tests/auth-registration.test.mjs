@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 
 process.env.NODE_ENV = "development";
-process.env.MONGO_URI_DEV = "mongodb://127.0.0.1:27017/atomictasks_test";
+process.env.MONGO_URI_DEV = "mongodb://localhost:27017/atomictasks_test";
 process.env.JWT_ACCESS_SECRET = "test-access-secret-not-for-production";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret-not-for-production";
 process.env.JWT_ACCESS_EXPIRE = "15m";
@@ -14,12 +14,13 @@ process.env.JWT_REFRESH_EXPIRE = "7d";
 process.env.BCRYPT_SALT_ROUNDS = "4";
 
 const [
-  { login, refresh, register },
+  { createLogoutHandlers, login, refresh, register },
   { default: User },
   { emailQueue },
   { default: app },
-  { LoginDto, RefreshDto, RegisterDto },
+  { LoginDto, LogoutDto, RefreshDto, RegisterDto },
   { MAX_LOGIN_ATTEMPTS },
+  { createRequireAuth, requireRole },
 ] = await Promise.all([
   import("../dist/app/modules/auth/auth.controller.js"),
   import("../dist/app/modules/auth/auth.model.js"),
@@ -27,11 +28,13 @@ const [
   import("../dist/app/app.js"),
   import("../dist/app/modules/auth/auth.dto.js"),
   import("../dist/app/modules/auth/auth.constants.js"),
+  import("../dist/app/modules/auth/auth.middleware.js"),
 ]);
 
 const LOGIN_SELECT =
   "+password +loginAttempts +lockUntil +refreshTokenSessions";
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 const REFRESH_SELECT = "+refreshTokenSessions";
 
 const originalMethods = {
@@ -57,6 +60,7 @@ beforeEach(() => {
     loginProjection: null,
     refreshProjection: null,
     refreshLookups: [],
+    revokedRefreshTokens: [],
     rotationCalls: [],
     rotationResult: { rotated: true },
     passwordChecks: [],
@@ -277,6 +281,55 @@ function createRefreshToken(claims = {}, secret = REFRESH_SECRET, options = {}) 
   );
 }
 
+function createAccessToken(claims = {}, secret = ACCESS_SECRET, options = {}) {
+  return jwt.sign(
+    {
+      sub: new mongoose.Types.ObjectId().toString(),
+      email: "ada@example.com",
+      role: "user",
+      type: "access",
+      ...claims,
+    },
+    secret,
+    { expiresIn: "15m", ...options },
+  );
+}
+
+function callRequestHandler(handler, body = {}, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const response = {
+      statusCode: 0,
+      status(statusCode) {
+        this.statusCode = statusCode;
+        return this;
+      },
+      json(jsonBody) {
+        resolve({ statusCode: this.statusCode, body: jsonBody });
+        return this;
+      },
+      send() {
+        resolve({ statusCode: this.statusCode, body: undefined });
+        return this;
+      },
+    };
+
+    handler({ body, headers }, response, reject);
+  });
+}
+
+function runAuthMiddleware(middleware, token) {
+  return new Promise((resolve, reject) => {
+    const request = {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    };
+
+    middleware(request, {}, (error) => {
+      if (error) return reject(error);
+      return resolve(request);
+    });
+  });
+}
+
 function flushSideEffects() {
   return new Promise((resolve) => setImmediate(resolve));
 }
@@ -291,7 +344,7 @@ async function requestApp(t, path, { method = "GET", body } = {}) {
   const server = createServer(app);
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(0, "localhost", resolve);
   });
   t.after(async () => {
     server.closeAllConnections();
@@ -302,7 +355,7 @@ async function requestApp(t, path, { method = "GET", body } = {}) {
 
   const address = server.address();
   assert.ok(address && typeof address === "object");
-  return fetch(`http://127.0.0.1:${address.port}${path}`, {
+  return fetch(`http://localhost:${address.port}${path}`, {
     method,
     ...(body === undefined
       ? {}
@@ -404,6 +457,16 @@ test("RefreshDto trims and bounds refresh tokens", () => {
   }
 });
 
+test("LogoutDto requires and bounds a refresh token", () => {
+  const valid = LogoutDto.validate({ refreshToken: "r".repeat(32) });
+  assert.equal(valid.errors, null);
+
+  for (const refreshToken of [undefined, "short", "r".repeat(4097)]) {
+    const invalid = LogoutDto.validate({ refreshToken });
+    assert.ok(invalid.errors?.some((error) => error.includes("refreshToken")));
+  }
+});
+
 test("registration normalizes identity, saves verification before user, and returns sanitized tokens", async () => {
   const referrerId = new mongoose.Types.ObjectId();
   state.referrer = { _id: referrerId };
@@ -476,7 +539,7 @@ test("successful login normalizes email, resets counters, creates a session, and
 
   const result = await callLogin(
     { email: " ADA@EXAMPLE.COM ", password: "CorrectPass1!" },
-    { headers: { "user-agent": "test-browser" }, ip: "127.0.0.1" },
+    { headers: { "user-agent": "test-browser" }, ip: "localhost" },
   );
 
   assert.equal(result.statusCode, 200);
@@ -497,7 +560,7 @@ test("successful login normalizes email, resets counters, creates a session, and
     metadata: {
       device: "test-browser",
       userAgent: "test-browser",
-      ip: "127.0.0.1",
+      ip: "localhost",
     },
   });
   assert.deepEqual(state.order, ["refresh-session"]);
@@ -593,7 +656,7 @@ test("refresh rotates a valid token and returns the new pair", async () => {
 
   const result = await callRefresh(
     { refreshToken: oldRefreshToken },
-    { headers: { "user-agent": "refresh-test-agent" }, ip: "127.0.0.1" },
+    { headers: { "user-agent": "refresh-test-agent" }, ip: "localhost" },
   );
   await flushSideEffects();
 
@@ -615,7 +678,7 @@ test("refresh rotates a valid token and returns the new pair", async () => {
     {
       device: "refresh-test-agent",
       userAgent: "refresh-test-agent",
-      ip: "127.0.0.1",
+      ip: "localhost",
     },
   ]]);
   assert.equal(state.updates.length, 1);
@@ -694,6 +757,185 @@ test("reused refresh token logs detection, rejects, and issues no tokens", async
   const reuseLog = String(state.errors[0][0]).replace(/\u001b\[\d+m/g, "");
   assert.match(reuseLog, /refresh-token reuse detected/i);
   assert.ok(reuseLog.includes(userId.toString()));
+});
+
+test("logout blacklists a verified access token and revokes only the supplied refresh session", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const refreshToken = createRefreshToken({ sub: userId.toString() });
+  const accessToken = createAccessToken({ sub: userId.toString() });
+  const blacklistCalls = [];
+  state.refreshUser = createRefreshUser({ _id: userId });
+  state.refreshUser.removeRefreshTokenSession = async (token) => {
+    state.revokedRefreshTokens.push(token);
+  };
+  const { logout } = createLogoutHandlers(async (...args) => {
+    blacklistCalls.push(args);
+  });
+
+  const result = await callRequestHandler(
+    logout,
+    { refreshToken },
+    { authorization: `Bearer ${accessToken}` },
+  );
+
+  assert.equal(result.statusCode, 204);
+  assert.deepEqual(blacklistCalls, [
+    [accessToken, jwt.decode(accessToken).exp * 1000],
+  ]);
+  assert.deepEqual(state.refreshLookups, [userId.toString()]);
+  assert.equal(state.refreshProjection, REFRESH_SELECT);
+  assert.deepEqual(state.revokedRefreshTokens, [refreshToken]);
+});
+
+test("logout ignores forged refresh claims and forged access tokens", async () => {
+  const victimId = new mongoose.Types.ObjectId();
+  const forgedRefreshToken = jwt.sign(
+    { sub: victimId.toString(), type: "refresh" },
+    "not-the-refresh-secret",
+  );
+  const forgedAccessToken = jwt.sign(
+    { sub: victimId.toString(), type: "access", exp: Math.floor(Date.now() / 1000) + 60 },
+    "not-the-access-secret",
+  );
+  const blacklistCalls = [];
+  const { logout } = createLogoutHandlers(async (...args) => {
+    blacklistCalls.push(args);
+  });
+
+  const result = await callRequestHandler(
+    logout,
+    { refreshToken: forgedRefreshToken },
+    { authorization: `Bearer ${forgedAccessToken}` },
+  );
+
+  assert.equal(result.statusCode, 204);
+  assert.deepEqual(blacklistCalls, []);
+  assert.deepEqual(state.refreshLookups, []);
+});
+
+test("logout remains idempotent and revokes the refresh session when Redis fails", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const refreshToken = createRefreshToken({ sub: userId.toString() });
+  const accessToken = createAccessToken({ sub: userId.toString() });
+  state.refreshUser = createRefreshUser({ _id: userId });
+  state.refreshUser.removeRefreshTokenSession = async (token) => {
+    state.revokedRefreshTokens.push(token);
+  };
+  const { logout } = createLogoutHandlers(async () => {
+    throw new Error("redis offline");
+  });
+
+  const result = await callRequestHandler(
+    logout,
+    { refreshToken },
+    { authorization: `Bearer ${accessToken}` },
+  );
+
+  assert.equal(result.statusCode, 204);
+  assert.deepEqual(state.revokedRefreshTokens, [refreshToken]);
+  assert.equal(state.errors.length, 1);
+  assert.match(String(state.errors[0][0]), /Access-token blacklist failed/);
+});
+
+test("logout-all revokes every refresh session and blacklists the current access token", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const refreshToken = createRefreshToken({ sub: userId.toString() });
+  const accessToken = createAccessToken({ sub: userId.toString() });
+  const blacklistCalls = [];
+  state.refreshUser = createRefreshUser({ _id: userId });
+  let removeAllCalls = 0;
+  state.refreshUser.removeAllRefreshTokenSessions = async () => {
+    removeAllCalls += 1;
+  };
+  const { logoutAll } = createLogoutHandlers(async (...args) => {
+    blacklistCalls.push(args);
+  });
+
+  const result = await callRequestHandler(
+    logoutAll,
+    { refreshToken },
+    { authorization: `Bearer ${accessToken}` },
+  );
+
+  assert.equal(result.statusCode, 204);
+  assert.equal(removeAllCalls, 1);
+  assert.equal(blacklistCalls.length, 1);
+  assert.equal(blacklistCalls[0][0], accessToken);
+});
+
+test("requireAuth checks valid JWTs, rejects blacklisted tokens, and loads fresh users", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const user = createRefreshUser({ _id: userId });
+  const accessToken = createAccessToken({ sub: userId.toString() });
+  let userLookups = 0;
+  const middleware = createRequireAuth(
+    async () => true,
+    async () => {
+      userLookups += 1;
+      return user;
+    },
+  );
+
+  await assert.rejects(
+    runAuthMiddleware(middleware, accessToken),
+    (error) => assertApiError(error, 401, "Token has been revoked."),
+  );
+  assert.equal(userLookups, 0);
+});
+
+test("requireAuth rejects malformed tokens before Redis and requires a bearer token", async () => {
+  let blacklistCalls = 0;
+  const middleware = createRequireAuth(
+    async () => {
+      blacklistCalls += 1;
+      return false;
+    },
+    async () => null,
+  );
+
+  await assert.rejects(
+    runAuthMiddleware(middleware, "not-a-jwt"),
+    (error) => assertApiError(error, 401, "Invalid or expired access token."),
+  );
+  await assert.rejects(
+    runAuthMiddleware(middleware, null),
+    (error) => assertApiError(error, 401, "Access token required."),
+  );
+  assert.equal(blacklistCalls, 0);
+});
+
+test("requireAuth fails open on Redis errors but still loads the user", async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const user = createRefreshUser({ _id: userId });
+  const accessToken = createAccessToken({ sub: userId.toString() });
+  let userLookups = 0;
+  const middleware = createRequireAuth(
+    async () => {
+      throw new Error("redis unavailable");
+    },
+    async () => {
+      userLookups += 1;
+      return user;
+    },
+  );
+
+  const request = await runAuthMiddleware(middleware, accessToken);
+
+  assert.equal(request.user, user);
+  assert.equal(userLookups, 1);
+  assert.match(String(state.errors[0][0]), /fail-open/);
+});
+
+test("requireRole enforces role membership", async () => {
+  const user = createRefreshUser({ role: "user" });
+  const handler = requireRole("admin");
+
+  await assert.rejects(
+    new Promise((resolve, reject) =>
+      handler({ user }, {}, reject),
+    ),
+    (error) => assertApiError(error, 403, "Insufficient permissions."),
+  );
 });
 
 test("OAuth account returns provider-specific 409", async () => {
@@ -850,6 +1092,29 @@ test("refresh route reaches the handler and returns rotated tokens", async (t) =
   assert.equal(body.message, "Token refreshed.");
   assert.equal(body.data.tokens.refreshToken, "test-refresh-token");
   assert.equal(state.rotationCalls.length, 1);
+});
+
+test("logout routes validate refresh-token input before calling Redis or MongoDB", async (t) => {
+  const logoutResponse = await requestApp(t, "/api/v1/auth/logout", {
+    method: "POST",
+    body: {},
+  });
+  const logoutAllResponse = await requestApp(t, "/api/v1/auth/logout-all", {
+    method: "POST",
+    body: { refreshToken: "short" },
+  });
+
+  assert.equal(logoutResponse.status, 400);
+  assert.equal(logoutAllResponse.status, 400);
+  assert.deepEqual(state.refreshLookups, []);
+});
+
+test("/me requires an access bearer token", async (t) => {
+  const response = await requestApp(t, "/api/v1/auth/me");
+  const body = await response.json();
+
+  assert.equal(response.status, 401);
+  assert.equal(body.message, "Access token required.");
 });
 
 test("health route always returns success and formatted process uptime", async (t) => {
