@@ -12,6 +12,9 @@ import {
 
 const app: Application = express();
 
+export const redactVerificationTokenFromUrl = (url: string): string =>
+  url.replace(/(\/verify-email\/)[^/?]+/gi, "$1[redacted]");
+
 /* ── Security ─────────────────────────────────────────────────── */
 app.use(helmet());
 
@@ -23,8 +26,17 @@ app.use(
   }),
 );
 
-/* ── Logging (before body parsers so malformed bodies are logged) ── */
-app.use(morgan("dev"));
+/* ── Logging (redact one-time tokens in verification URLs) ────── */
+app.use(
+  morgan((tokens, req, res) => {
+    const url = redactVerificationTokenFromUrl(req.originalUrl);
+      const method = tokens.method?.(req, res) ?? "-";
+      const status = tokens.status?.(req, res) ?? "-";
+      const responseTime = tokens["response-time"]?.(req, res) ?? "-";
+      const contentLength = tokens.res?.(req, res, "content-length") ?? "-";
+      return `${method} ${url} ${status} ${responseTime} ms - ${contentLength}`;
+  }),
+);
 
 /* ── Body parsers ────────────────────────────────────────────── */
 app.use(express.json({ limit: "1mb" }));

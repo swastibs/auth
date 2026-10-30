@@ -59,3 +59,59 @@ export const logoutSchema = Joi.object({
 export class LogoutDto extends BaseDto {
   static override readonly schema = logoutSchema;
 }
+
+/* ── Resend-verification schema ──────────────────────────────────────── */
+export const resendVerificationSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().max(254).required(),
+});
+
+export class ResendVerificationDto extends BaseDto {
+  static override readonly schema = resendVerificationSchema;
+}
+
+/* ── Forgot-password schema ──────────────────────────────────────────── */
+export const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().max(254).required(),
+});
+
+export class ForgotPasswordDto extends BaseDto {
+  static override readonly schema = forgotPasswordSchema;
+}
+
+const newPasswordSchema = Joi.string()
+  .min(8)
+  .max(128)
+  .custom((value: string, helpers) => {
+    if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
+      return helpers.error("password.requireLetterAndNumber");
+    }
+    return value;
+  })
+  .messages({
+    "password.requireLetterAndNumber":
+      "Password must contain at least one letter and one number",
+  });
+
+/* ── Reset-password schema ───────────────────────────────────────────── */
+export const resetPasswordSchema = Joi.object({
+  newPassword: newPasswordSchema.required(),
+});
+
+export class ResetPasswordDto extends BaseDto {
+  static override readonly schema = resetPasswordSchema;
+}
+
+/* ── Change-password schema ──────────────────────────────────────────── */
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().min(1).max(128).required(),
+  newPassword: newPasswordSchema
+    .invalid(Joi.ref("currentPassword"))
+    .messages({
+      "any.invalid": "New password must be different from current password.",
+    })
+    .required(),
+});
+
+export class ChangePasswordDto extends BaseDto {
+  static override readonly schema = changePasswordSchema;
+}

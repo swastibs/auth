@@ -65,3 +65,7 @@ export const BCRYPT_SALT_ROUNDS: number =
 /* ------------------------------- REDIS -------------------------------- */
 export const REDIS_URL: string =
   process.env.REDIS_URL ?? "redis://localhost:6379";
+export const UPSTASH_REDIS_REST_URL: string | undefined =
+  process.env.UPSTASH_REDIS_REST_URL;
+export const UPSTASH_REDIS_REST_TOKEN: string | undefined =
+  process.env.UPSTASH_REDIS_REST_TOKEN;

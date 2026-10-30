@@ -115,3 +115,15 @@ export const requireRole = (...roles: UserRole[]): RequestHandler => {
 		return next();
 	};
 };
+
+export const requireEmailVerified: RequestHandler = (req, _res, next) => {
+	if (!req.user) return next(ApiError.unauthorized("Not authenticated."));
+	if (!req.user.isEmailVerified) {
+		return next(
+			ApiError.forbidden(
+				"Please verify your email address before continuing. Check your inbox or request a new verification link.",
+			),
+		);
+	}
+	return next();
+};

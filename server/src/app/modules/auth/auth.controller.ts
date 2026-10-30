@@ -1,5 +1,6 @@
 import type { Request, RequestHandler, Response } from "express";
 import type { Types } from "mongoose";
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import chalk from "chalk";
 import jwt from "jsonwebtoken";
@@ -12,10 +13,12 @@ import catchAsync from "../../shared/utils/catch-async.util.js";
 import {
   JWT_ACCESS_EXPIRE,
   JWT_ACCESS_SECRET,
+  BCRYPT_SALT_ROUNDS,
   JWT_REFRESH_EXPIRE,
   JWT_REFRESH_SECRET,
 } from "../../shared/config/env.config.js";
 import { emailQueue } from "../../shared/queues/email.queue.js";
+import { getRedisClient } from "../../shared/config/redis.config.js";
 import { blacklistAccessToken } from "../../shared/utils/token-blacklist.util.js";
 
 /** Body shape after route-level validation. */
@@ -40,6 +43,23 @@ interface LogoutBody {
   refreshToken: string;
 }
 
+interface ResendVerificationBody {
+  email: string;
+}
+
+interface ForgotPasswordBody {
+  email: string;
+}
+
+interface ResetPasswordBody {
+  newPassword: string;
+}
+
+interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+}
+
 interface RefreshTokenPayload {
   sub: string;
   type: "refresh";
@@ -56,6 +76,13 @@ const INVALID_CREDENTIALS = "Invalid email or password.";
 const LOGIN_SELECT =
   "+password +loginAttempts +lockUntil +refreshTokenSessions";
 const REFRESH_INVALID_MESSAGE = "Invalid or expired refresh token.";
+const FORGOT_PASSWORD_MESSAGE =
+  "If an account exists with that email, a password reset link has been sent.";
+const INVALID_RESET_TOKEN_MESSAGE =
+  "This password reset link is invalid or has expired. Please request a new one.";
+const RESEND_VERIFICATION_COOLDOWN_SEC = 60;
+const RESEND_VERIFICATION_MESSAGE =
+  "If an account exists with that email and requires verification, a new link has been sent.";
 
 const extractBearerToken = (req: Request): string | null => {
   const header = req.headers.authorization;
@@ -77,6 +104,40 @@ const extractUserIdFromRefreshToken = (token: string): string | null => {
     return null;
   } catch {
     return null;
+  }
+};
+
+const blacklistCurrentAccessToken = async (
+  req: Request,
+  action: "logout" | "logoutAll" | "resetPassword" | "changePassword",
+  blacklistToken: typeof blacklistAccessToken = blacklistAccessToken,
+): Promise<void> => {
+  const token = extractBearerToken(req);
+  if (!token) return;
+
+  let expiresAtMs: number;
+  try {
+    const decoded = jwt.verify(token, JWT_ACCESS_SECRET);
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      decoded.type !== "access" ||
+      typeof decoded.exp !== "number"
+    ) {
+      return;
+    }
+    expiresAtMs = decoded.exp * 1000;
+  } catch {
+    return;
+  }
+
+  try {
+    await blacklistToken(token, expiresAtMs);
+  } catch (error) {
+    console.error(
+      chalk.red(`[auth.${action}] Access-token blacklist failed:`),
+      error,
+    );
   }
 };
 
@@ -422,44 +483,11 @@ export const refresh: RequestHandler = catchAsync(
 export const createLogoutHandlers = (
   blacklistToken: typeof blacklistAccessToken = blacklistAccessToken,
 ): { logout: RequestHandler; logoutAll: RequestHandler } => {
-  const blacklistCurrentAccessToken = async (
-    req: Request,
-    action: "logout" | "logoutAll",
-  ): Promise<void> => {
-    const token = extractBearerToken(req);
-    if (!token) return;
-
-    let expiresAtMs: number;
-    try {
-      const decoded = jwt.verify(token, JWT_ACCESS_SECRET);
-      if (
-        typeof decoded !== "object" ||
-        decoded === null ||
-        decoded.type !== "access" ||
-        typeof decoded.exp !== "number"
-      ) {
-        return;
-      }
-      expiresAtMs = decoded.exp * 1000;
-    } catch {
-      return;
-    }
-
-    try {
-      await blacklistToken(token, expiresAtMs);
-    } catch (error) {
-      console.error(
-        chalk.red(`[auth.${action}] Access-token blacklist failed:`),
-        error,
-      );
-    }
-  };
-
   const logout: RequestHandler = catchAsync(
     async (req: Request, res: Response): Promise<Response> => {
       const { refreshToken } = req.body as LogoutBody;
 
-      await blacklistCurrentAccessToken(req, "logout");
+      await blacklistCurrentAccessToken(req, "logout", blacklistToken);
 
       const userId = extractUserIdFromRefreshToken(refreshToken);
       if (userId) {
@@ -484,7 +512,7 @@ export const createLogoutHandlers = (
     async (req: Request, res: Response): Promise<Response> => {
       const { refreshToken } = req.body as LogoutBody;
 
-      await blacklistCurrentAccessToken(req, "logoutAll");
+      await blacklistCurrentAccessToken(req, "logoutAll", blacklistToken);
 
       const userId = extractUserIdFromRefreshToken(refreshToken);
       if (userId) {
@@ -522,6 +550,293 @@ export const me: RequestHandler = catchAsync(
 
     return ApiResponse.ok(res, "User fetched.", {
       user: req.user.toJSON(),
+    });
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  VERIFY EMAIL — consume the one-time token from the URL                */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const verifyEmail: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    const rawToken = String(req.params.token ?? "").trim();
+    if (rawToken.length < 20 || rawToken.length > 512) {
+      throw ApiError.badRequest(
+        "This verification link is invalid or has expired.",
+      );
+    }
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+    const now = new Date();
+    const tokenFilter = {
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: now },
+    };
+
+    const user = await User.findOne(tokenFilter).select(
+      "+emailVerificationToken +emailVerificationExpires",
+    );
+
+    if (!user || user.deletedAt || user.status === AccountStatus.DELETED) {
+      throw ApiError.badRequest(
+        "This verification link is invalid or has expired. Please request a new one.",
+      );
+    }
+    if (user.status === AccountStatus.SUSPENDED) {
+      throw ApiError.forbidden(
+        "Your account has been suspended. Please contact support.",
+      );
+    }
+
+    const result = await User.updateOne(
+      {
+        _id: user._id,
+        ...tokenFilter,
+        deletedAt: null,
+        status: { $nin: [AccountStatus.SUSPENDED, AccountStatus.DELETED] },
+      },
+      {
+        $set: { isEmailVerified: true, lastActiveAt: now },
+        $unset: { emailVerificationToken: 1, emailVerificationExpires: 1 },
+      },
+    );
+
+    if (result.matchedCount !== 1) {
+      throw ApiError.badRequest(
+        "This verification link is invalid or has expired. Please request a new one.",
+      );
+    }
+
+    return ApiResponse.ok(
+      res,
+      "Email verified successfully. You may now return to the app.",
+      { isEmailVerified: true },
+    );
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  RESEND VERIFICATION — enumerate-safe and rate-limited per user       */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const createResendVerificationHandler = (
+  redisClientProvider: typeof getRedisClient = getRedisClient,
+): RequestHandler =>
+  catchAsync(async (req: Request, res: Response): Promise<Response> => {
+    const { email } = req.body as ResendVerificationBody;
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      "+emailVerificationToken +emailVerificationExpires",
+    );
+
+    if (
+      !user ||
+      user.deletedAt ||
+      user.status === AccountStatus.SUSPENDED ||
+      user.status === AccountStatus.DELETED ||
+      user.isEmailVerified ||
+      user.provider !== AuthProvider.LOCAL
+    ) {
+      return ApiResponse.ok(res, RESEND_VERIFICATION_MESSAGE);
+    }
+
+    try {
+      const cooldownKey = `verify-resend:${user._id.toString()}`;
+      const setResult = await redisClientProvider().set(
+        cooldownKey,
+        "1",
+        { ex: RESEND_VERIFICATION_COOLDOWN_SEC, nx: true },
+      );
+      if (setResult !== "OK") {
+        return ApiResponse.ok(res, RESEND_VERIFICATION_MESSAGE);
+      }
+    } catch (error) {
+      console.error(
+        chalk.red("[auth.resendVerification] Cooldown check failed:"),
+        error,
+      );
+    }
+
+    const emailVerificationToken = user.createEmailVerificationToken();
+    await user.save();
+
+    void Promise.resolve()
+      .then(() =>
+        emailQueue.add("verification", {
+          to: user.email,
+          name: user.name,
+          token: emailVerificationToken,
+          expiresInMs: 24 * 60 * 60 * 1000,
+        }),
+      )
+      .catch((error: unknown) =>
+        console.error(
+          chalk.red(
+            "[auth.resendVerification] Verification email enqueue failed:",
+          ),
+          error,
+        ),
+      );
+
+    return ApiResponse.ok(res, RESEND_VERIFICATION_MESSAGE);
+  });
+
+export const resendVerification: RequestHandler =
+  createResendVerificationHandler();
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  FORGOT PASSWORD — issue a non-enumerating reset email                 */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const forgotPassword: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    const { email } = req.body as ForgotPasswordBody;
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      "+passwordResetToken +passwordResetExpires",
+    );
+
+    if (
+      !user ||
+      user.deletedAt ||
+      user.status !== AccountStatus.ACTIVE ||
+      user.provider !== AuthProvider.LOCAL
+    ) {
+      return ApiResponse.ok(res, FORGOT_PASSWORD_MESSAGE);
+    }
+
+    const passwordResetToken = user.createPasswordResetToken();
+    await user.save();
+
+    void Promise.resolve()
+      .then(() =>
+        emailQueue.add("password-reset", {
+          to: user.email,
+          name: user.name,
+          token: passwordResetToken,
+          expiresInMs: 60 * 60 * 1000,
+        }),
+      )
+      .catch((error: unknown) =>
+        console.error(
+          chalk.red("[auth.forgotPassword] Reset email enqueue failed:"),
+          error,
+        ),
+      );
+
+    return ApiResponse.ok(res, FORGOT_PASSWORD_MESSAGE);
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  RESET PASSWORD — consume token and revoke all sessions                */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const resetPassword: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    const rawToken = String(req.params.token ?? "").trim();
+    if (rawToken.length < 20 || rawToken.length > 512) {
+      throw ApiError.badRequest(INVALID_RESET_TOKEN_MESSAGE);
+    }
+
+    const passwordResetToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+    const now = new Date();
+    const tokenFilter = {
+      passwordResetToken,
+      passwordResetExpires: { $gt: now },
+    };
+    const user = await User.findOne(tokenFilter).select(
+      "+passwordResetToken +passwordResetExpires",
+    );
+
+    if (!user || user.deletedAt || user.status === AccountStatus.DELETED) {
+      throw ApiError.badRequest(INVALID_RESET_TOKEN_MESSAGE);
+    }
+    if (user.status === AccountStatus.SUSPENDED) {
+      throw ApiError.forbidden(
+        "Your account has been suspended. Please contact support.",
+      );
+    }
+    if (user.provider !== AuthProvider.LOCAL) {
+      throw ApiError.badRequest(
+        "Password reset is unavailable for this sign-in provider.",
+      );
+    }
+
+    const { newPassword } = req.body as ResetPasswordBody;
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+    const result = await User.updateOne(
+      {
+        _id: user._id,
+        ...tokenFilter,
+        deletedAt: null,
+        status: AccountStatus.ACTIVE,
+        provider: AuthProvider.LOCAL,
+      },
+      {
+        $set: {
+          password: passwordHash,
+          refreshTokenSessions: [],
+          lastActiveAt: now,
+        },
+        $unset: { passwordResetToken: 1, passwordResetExpires: 1 },
+      },
+      { runValidators: true },
+    );
+
+    if (result.matchedCount !== 1) {
+      throw ApiError.badRequest(INVALID_RESET_TOKEN_MESSAGE);
+    }
+
+    await blacklistCurrentAccessToken(req, "resetPassword");
+
+    return ApiResponse.ok(res, "Password reset successfully. Please sign in again.", {
+      passwordReset: true,
+    });
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  CHANGE PASSWORD — verify current password and revoke sessions         */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const changePassword: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    if (!req.user) throw ApiError.unauthorized("Not authenticated.");
+
+    const { currentPassword, newPassword } = req.body as ChangePasswordBody;
+    const user = await User.findById(req.user._id).select(
+      "+password +refreshTokenSessions",
+    );
+
+    if (!user || user.deletedAt || user.status === AccountStatus.DELETED) {
+      throw ApiError.unauthorized("Not authenticated.");
+    }
+    if (user.status === AccountStatus.SUSPENDED) {
+      throw ApiError.forbidden(
+        "Your account has been suspended. Please contact support.",
+      );
+    }
+    if (!(await user.comparePassword(currentPassword))) {
+      throw ApiError.unauthorized("Current password is incorrect.");
+    }
+
+    user.password = newPassword;
+    user.refreshTokenSessions = [];
+    user.lastActiveAt = new Date();
+    await user.save();
+
+    await blacklistCurrentAccessToken(req, "changePassword");
+
+    return ApiResponse.ok(res, "Password changed successfully. Please sign in again.", {
+      passwordChanged: true,
     });
   },
 );
