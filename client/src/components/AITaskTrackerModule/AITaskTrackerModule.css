@@ -1,0 +1,569 @@
+.ai-section {
+  padding: 6rem 1rem;
+  background: color-mix(in oklch, var(--muted) 32%, var(--background));
+  border-bottom: 1px solid var(--border);
+}
+.ai-scroll-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+.ai-scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.ai-shell {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+.ai-intro {
+  max-width: 620px;
+  margin: 0 auto 3rem;
+  text-align: center;
+}
+.ai-intro h2 {
+  margin: 0.75rem 0 0.65rem;
+  font: 600 clamp(2rem, 4vw, 3.35rem)/1.05 var(--font-heading);
+  letter-spacing: -0.04em;
+}
+.ai-intro p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.96rem;
+}
+.ai-tracker-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: 0 24px 70px
+    color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+.ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.4rem 1.6rem;
+  border-bottom: 1px solid var(--border);
+}
+.ai-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.85rem;
+}
+.ai-brand,
+.ai-brand > div,
+.ai-count,
+.ai-brand small,
+.suggestion-label,
+.task-date,
+.task-copy small,
+.mini-calendar-header,
+.insight-bot {
+  display: flex;
+  align-items: center;
+}
+.ai-brand {
+  gap: 0.7rem;
+}
+.ai-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--accent-atomic-foreground);
+  background: var(--accent-atomic);
+  animation: avatar-pulse 2s ease-in-out infinite;
+}
+.ai-brand > div {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+.ai-brand strong {
+  font-size: 0.7rem;
+  letter-spacing: 0.13em;
+}
+.ai-brand small {
+  gap: 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+}
+.ai-brand small i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #49b77a;
+}
+.ai-count {
+  gap: 0.35rem;
+  color: var(--accent-atomic);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.ai-date-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ai-date-controls button,
+.ai-date-controls label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.ai-date-controls button {
+  width: 32px;
+  cursor: pointer;
+}
+.ai-date-controls button:hover:not(:disabled) {
+  border-color: var(--accent-atomic);
+  color: var(--accent-atomic);
+}
+.ai-date-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.ai-date-controls label {
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+}
+.ai-date-controls input {
+  width: 106px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: 600 0.7rem var(--font-sans);
+}
+.ai-date-controls .ai-today-button {
+  padding: 0 2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.ai-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(250px, 0.7fr);
+  gap: 2rem;
+  padding: 2rem;
+}
+.suggestion-box {
+  padding: 1rem;
+  border: 1px solid color-mix(in oklch, var(--accent-atomic) 40%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--accent-atomic) 7%, var(--card));
+}
+.suggestion-label {
+  gap: 0.4rem;
+  color: var(--accent-atomic);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+.suggestion-input {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.suggestion-input input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: 0.78rem var(--font-sans);
+}
+.suggestion-input input:focus {
+  border-color: var(--accent-atomic);
+}
+.suggestion-input button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent-atomic);
+  color: var(--accent-atomic-foreground);
+  cursor: pointer;
+}
+.suggestion-box > small {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+}
+.quick-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.quick-add input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.62rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: 0.72rem var(--font-sans);
+}
+.quick-add input:focus {
+  border-color: var(--accent-atomic);
+}
+.quick-add button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+.quick-add button:hover {
+  border-color: var(--accent-atomic);
+  color: var(--accent-atomic);
+}
+.task-list {
+  margin-top: 2rem;
+}
+.empty-task-state {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+.empty-task-state strong {
+  color: var(--foreground);
+}
+.ai-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.ai-panel-heading h3 {
+  margin: 0.35rem 0 0;
+  font-size: 0.98rem;
+  letter-spacing: -0.02em;
+}
+.task-date {
+  gap: 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+}
+.task-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 65px;
+  padding: 0.7rem 0.35rem;
+  border-bottom: 1px solid var(--border);
+  transition:
+    opacity 0.25s,
+    transform 0.35s,
+    background 0.2s;
+}
+.task-row:hover {
+  background: color-mix(in oklch, var(--muted) 25%, transparent);
+}
+.task-row.is-done {
+  opacity: 0.5;
+}
+.task-row.is-done .task-copy strong {
+  text-decoration: line-through;
+}
+.drag-handle {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  cursor: grab;
+}
+.task-check {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-atomic-foreground);
+  cursor: pointer;
+}
+.task-row.is-done .task-check {
+  border-color: var(--accent-atomic);
+  background: var(--accent-atomic);
+}
+.task-copy {
+  min-width: 0;
+  flex: 1;
+}
+.task-copy strong,
+.task-copy small {
+  display: block;
+}
+.task-copy strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-copy small {
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.61rem;
+}
+.task-copy small i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.priority {
+  padding: 0.25rem 0.42rem;
+  border-radius: 5px;
+  font-size: 0.57rem;
+  font-weight: 800;
+}
+.priority-high {
+  color: #b44938;
+  background: color-mix(in oklch, #e7836b 16%, transparent);
+}
+.priority-focus {
+  color: var(--accent-atomic-foreground);
+  background: var(--accent-atomic);
+}
+.priority-light {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.task-sparkle {
+  color: var(--accent-atomic);
+  animation: sparkle-pop 0.7s ease-out;
+}
+.task-delete {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.2s,
+    color 0.2s,
+    background 0.2s;
+}
+.task-row:hover .task-delete,
+.task-delete:focus-visible {
+  opacity: 1;
+}
+.task-delete:hover {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+.ai-side-column {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+.insights-panel,
+.mini-calendar {
+  padding: 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+}
+.insight-bot {
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  color: var(--accent-atomic);
+  background: color-mix(in oklch, var(--accent-atomic) 12%, transparent);
+}
+.insights-panel p {
+  margin: 1.25rem 0 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.insight-meter {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--muted);
+}
+.insight-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-atomic);
+  transition: width 0.5s ease;
+}
+.insights-panel > small {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+}
+.mini-calendar-header {
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.mini-calendar-header strong {
+  font-size: 0.76rem;
+}
+.mini-calendar-header span {
+  color: var(--muted-foreground);
+  font-size: 0.58rem;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.3rem;
+}
+.calendar-grid b {
+  padding-bottom: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.58rem;
+  text-align: center;
+}
+.calendar-grid button,
+.calendar-blank {
+  aspect-ratio: 1;
+}
+.calendar-grid button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font: 0.62rem var(--font-sans);
+  cursor: pointer;
+}
+.calendar-grid button:hover,
+.calendar-grid button.today {
+  background: var(--accent-atomic);
+  color: var(--accent-atomic-foreground);
+}
+.calendar-grid button.has-task {
+  box-shadow: inset 0 -3px 0 var(--accent-atomic);
+}
+.calendar-grid button.is-complete:not(.today) {
+  background: color-mix(in oklch, var(--accent-atomic) 14%, var(--background));
+  color: var(--accent-atomic);
+}
+.calendar-grid button:disabled {
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.calendar-grid button:disabled:hover {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.celebrate-sparkle {
+  position: fixed;
+  top: 48%;
+  left: 50%;
+  z-index: 90;
+  color: var(--accent-atomic);
+  pointer-events: none;
+  animation: celebrate 0.7s ease-out forwards;
+}
+@keyframes avatar-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--accent-atomic) 25%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px
+      color-mix(in oklch, var(--accent-atomic) 0%, transparent);
+  }
+}
+@keyframes celebrate {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px) scale(0.6) rotate(-15deg);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(-50%, -12px) scale(1.2) rotate(8deg);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -42px) scale(0.85) rotate(20deg);
+  }
+}
+@keyframes sparkle-pop {
+  from {
+    transform: scale(0.4) rotate(-20deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .ai-section {
+    padding: 4.5rem 0.75rem;
+  }
+  .ai-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .ai-header-actions {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .ai-date-controls {
+    width: 100%;
+  }
+  .ai-date-controls label {
+    flex: 1;
+  }
+  .ai-date-controls input {
+    width: 100%;
+  }
+  .ai-content {
+    grid-template-columns: 1fr;
+    padding: 1.1rem;
+  }
+  .task-row {
+    gap: 0.4rem;
+  }
+  .priority {
+    display: none;
+  }
+}
