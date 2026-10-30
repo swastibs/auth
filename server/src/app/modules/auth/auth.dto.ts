@@ -31,3 +31,22 @@ export const registerSchema = Joi.object({
 export class RegisterDto extends BaseDto {
   static override readonly schema = registerSchema;
 }
+
+/* ── Login schema ────────────────────────────────────────────────────── */
+export const loginSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().max(254).required(),
+  password: Joi.string().min(8).max(128).required(),
+});
+
+export class LoginDto extends BaseDto {
+  static override readonly schema = loginSchema;
+}
+
+/* ── Refresh-token schema ────────────────────────────────────────────── */
+export const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string().trim().min(20).max(4096).required(),
+});
+
+export class RefreshDto extends BaseDto {
+  static override readonly schema = refreshTokenSchema;
+}

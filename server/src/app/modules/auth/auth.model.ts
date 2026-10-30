@@ -122,6 +122,12 @@ export interface IUserMethods {
     HydratedDocument<IUser, IUserMethods>
   >;
 
+  rotateRefreshTokenSession(
+    oldPlain: string,
+    newPlain: string,
+    meta?: { device?: string; ip?: string; userAgent?: string },
+  ): Promise<{ rotated: boolean }>;
+
   isLocked(): boolean;
   incLoginAttempts(): Promise<HydratedDocument<IUser, IUserMethods>>;
   resetLoginAttempts(): Promise<HydratedDocument<IUser, IUserMethods>>;
@@ -440,6 +446,108 @@ UserSchema.methods.removeAllRefreshTokenSessions = async function (
 ): Promise<UserDocument> {
   this.refreshTokenSessions = [];
   return this.save();
+};
+
+UserSchema.methods.rotateRefreshTokenSession = async function (
+  this: UserDocument,
+  oldPlain: string,
+  newPlain: string,
+  meta: { device?: string; ip?: string; userAgent?: string } = {},
+): Promise<{ rotated: boolean }> {
+  const now = new Date();
+  const oldHash = sha256(oldPlain);
+  const newHash = sha256(newPlain);
+  const ttlMs = durationToMs(JWT_REFRESH_EXPIRE) || 7 * 24 * 60 * 60 * 1000;
+  const newSession: IRefreshTokenSession = {
+    token: newHash,
+    ...(meta.device !== undefined && { device: meta.device }),
+    ...(meta.ip !== undefined && { ip: meta.ip }),
+    ...(meta.userAgent !== undefined && { userAgent: meta.userAgent }),
+    expiresAt: new Date(now.getTime() + ttlMs),
+    createdAt: now,
+  };
+  const sessionsExpression = { $ifNull: ["$refreshTokenSessions", []] };
+  const remainingSessions = {
+    $filter: {
+      input: sessionsExpression,
+      as: "session",
+      cond: {
+        $and: [
+          { $ne: ["$$session.token", oldHash] },
+          { $gt: ["$$session.expiresAt", now] },
+        ],
+      },
+    },
+  };
+  const tokenExists = {
+    $in: [
+      oldHash,
+      {
+        $map: {
+          input: sessionsExpression,
+          as: "session",
+          in: "$$session.token",
+        },
+      },
+    ],
+  };
+  const cappedSessions = {
+    $cond: [
+      { $gte: [{ $size: "$$remaining" }, MAX_REFRESH_SESSIONS] },
+      {
+        $slice: [
+          {
+            $sortArray: {
+              input: "$$remaining",
+              sortBy: { createdAt: 1 },
+            },
+          },
+          1,
+          MAX_REFRESH_SESSIONS - 1,
+        ],
+      },
+      "$$remaining",
+    ],
+  };
+
+  const updatedUser = await (this.constructor as UserModel)
+    .findOneAndUpdate(
+      { _id: this._id },
+      [
+        {
+          $set: {
+            refreshTokenSessions: {
+              $cond: [
+                tokenExists,
+                {
+                  $let: {
+                    vars: { remaining: remainingSessions },
+                    in: {
+                      $concatArrays: [
+                        cappedSessions,
+                        { $literal: [newSession] },
+                      ],
+                    },
+                  },
+                },
+                [],
+              ],
+            },
+          },
+        },
+      ],
+      { new: true, projection: { refreshTokenSessions: 1 } },
+    )
+    .select("+refreshTokenSessions");
+
+  if (!updatedUser) return { rotated: false };
+
+  this.refreshTokenSessions = updatedUser.refreshTokenSessions;
+  return {
+    rotated: this.refreshTokenSessions.some(
+      (session) => session.token === newHash,
+    ),
+  };
 };
 
 UserSchema.methods.isLocked = function (this: UserDocument): boolean {

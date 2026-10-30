@@ -1,6 +1,8 @@
 import type { Request, RequestHandler, Response } from "express";
 import type { Types } from "mongoose";
+import bcrypt from "bcryptjs";
 import chalk from "chalk";
+import jwt from "jsonwebtoken";
 
 import User from "./auth.model.js";
 import { AccountStatus, AuthProvider } from "./auth.constants.js";
@@ -10,6 +12,7 @@ import catchAsync from "../../shared/utils/catch-async.util.js";
 import {
   JWT_ACCESS_EXPIRE,
   JWT_REFRESH_EXPIRE,
+  JWT_REFRESH_SECRET,
 } from "../../shared/config/env.config.js";
 import { emailQueue } from "../../shared/queues/email.queue.js";
 
@@ -22,8 +25,31 @@ interface RegisterBody {
   referralCode?: string;
 }
 
+interface LoginBody {
+  email: string;
+  password: string;
+}
+
+interface RefreshBody {
+  refreshToken: string;
+}
+
+interface RefreshTokenPayload {
+  sub: string;
+  type: "refresh";
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
 /** Fields to select when checking if a user already exists. */
 const EXISTING_USER_PROJECTION = "_id provider deletedAt";
+const DUMMY_PASSWORD_HASH =
+  "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+const INVALID_CREDENTIALS = "Invalid email or password.";
+const LOGIN_SELECT =
+  "+password +loginAttempts +lockUntil +refreshTokenSessions";
+const REFRESH_INVALID_MESSAGE = "Invalid or expired refresh token.";
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 /*  REGISTER                                                              */
@@ -169,5 +195,193 @@ export const register: RequestHandler = catchAsync(
         },
       },
     );
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  LOGIN                                                                 */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const login: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    const { email, password } = req.body as LoginBody;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    /* ── 1. Load hidden authentication fields ─────────────────────────── */
+    const user = await User.findOne({ email: normalizedEmail }).select(
+      LOGIN_SELECT,
+    );
+
+    if (!user) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      throw ApiError.unauthorized(INVALID_CREDENTIALS);
+    }
+
+    /* ── 2. Check account state and authentication provider ───────────── */
+    if (user.deletedAt) {
+      throw ApiError.unauthorized(INVALID_CREDENTIALS);
+    }
+
+    if (user.status === AccountStatus.SUSPENDED) {
+      throw ApiError.forbidden(
+        "Your account has been suspended. Please contact support.",
+      );
+    }
+
+    if (user.provider !== AuthProvider.LOCAL) {
+      throw ApiError.badRequest(
+        `This account uses ${user.provider} sign-in. Please continue with ${user.provider}.`,
+      );
+    }
+
+    /* ── 3. Enforce lockout before performing password verification ───── */
+    if (user.isLocked()) {
+      throw ApiError.tooManyRequests(
+        "Too many failed login attempts. Please try again later.",
+      );
+    }
+
+    /* ── 4. Verify credentials and persist failed attempts ─────────────── */
+    const passwordMatches = await user.comparePassword(password);
+
+    if (!passwordMatches) {
+      await user.incLoginAttempts();
+      throw ApiError.unauthorized(INVALID_CREDENTIALS);
+    }
+
+    /* ── 5. Reset counters and stamp activity ────────────────────────── */
+    const now = new Date();
+    user.loginAttempts = 0;
+    user.set("lockUntil", undefined);
+    user.lastLogin = now;
+    user.lastActiveAt = now;
+
+    /* ── 6. Issue tokens and persist refresh session ──────────────────── */
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+    const userAgent = req.headers["user-agent"];
+
+    await user.addRefreshTokenSession(refreshToken, {
+      ...(typeof userAgent === "string" && {
+        device: userAgent,
+        userAgent,
+      }),
+      ...(req.ip !== undefined && { ip: req.ip }),
+    });
+
+    /* ── 7. Respond with the shared authentication response ───────────── */
+    return ApiResponse.ok(res, "Login successful.", {
+      user: user.toJSON(),
+      tokens: {
+        accessToken,
+        refreshToken,
+        accessTokenExpiresIn: JWT_ACCESS_EXPIRE,
+        refreshTokenExpiresIn: JWT_REFRESH_EXPIRE,
+        tokenType: "Bearer" as const,
+      },
+    });
+  },
+);
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+/*  REFRESH — rotate refresh token and detect reuse                      */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+export const refresh: RequestHandler = catchAsync(
+  async (req: Request, res: Response): Promise<Response> => {
+    const { refreshToken: plainRefreshToken } = req.body as RefreshBody;
+
+    /* ── 1. Verify the token and its expected payload ─────────────────── */
+    let payload: RefreshTokenPayload;
+
+    try {
+      const decoded = jwt.verify(plainRefreshToken, JWT_REFRESH_SECRET);
+      if (
+        typeof decoded !== "object" ||
+        decoded === null ||
+        decoded.type !== "refresh" ||
+        typeof decoded.sub !== "string" ||
+        typeof decoded.jti !== "string" ||
+        typeof decoded.iat !== "number" ||
+        typeof decoded.exp !== "number"
+      ) {
+        throw new Error("Malformed refresh token payload");
+      }
+
+      payload = {
+        sub: decoded.sub,
+        type: "refresh",
+        jti: decoded.jti,
+        iat: decoded.iat,
+        exp: decoded.exp,
+      };
+    } catch {
+      throw ApiError.unauthorized(REFRESH_INVALID_MESSAGE);
+    }
+
+    /* ── 2. Load the user and its hidden refresh-session array ────────── */
+    const user = await User.findById(payload.sub).select(
+      "+refreshTokenSessions",
+    );
+
+    if (!user || user.deletedAt || user.status === AccountStatus.DELETED) {
+      throw ApiError.unauthorized(REFRESH_INVALID_MESSAGE);
+    }
+
+    if (user.status === AccountStatus.SUSPENDED) {
+      throw ApiError.forbidden(
+        "Your account has been suspended. Please contact support.",
+      );
+    }
+
+    /* ── 3. Rotate atomically; reuse revokes the entire session family ── */
+    const newAccessToken = user.generateAccessToken();
+    const newRefreshToken = user.generateRefreshToken();
+    const userAgent = req.headers["user-agent"];
+    const { rotated } = await user.rotateRefreshTokenSession(
+      plainRefreshToken,
+      newRefreshToken,
+      {
+        ...(typeof userAgent === "string" && {
+          device: userAgent,
+          userAgent,
+        }),
+        ...(req.ip !== undefined && { ip: req.ip }),
+      },
+    );
+
+    if (!rotated) {
+      console.error(
+        chalk.red(
+          `[auth.refresh] Refresh-token reuse detected for user ${user._id.toString()} — all sessions revoked.`,
+        ),
+      );
+      throw ApiError.unauthorized(
+        "Refresh token is no longer valid. Please log in again.",
+      );
+    }
+
+    /* ── 4. Update activity without blocking token delivery ───────────── */
+    void Promise.resolve()
+      .then(() =>
+        User.updateOne({ _id: user._id }, { lastActiveAt: new Date() }),
+      )
+      .catch((err: unknown) =>
+        console.error(
+          chalk.red("[auth.refresh] lastActiveAt update failed:"),
+          err,
+        ),
+      );
+
+    /* ── 5. Respond with the newly-issued token pair ──────────────────── */
+    return ApiResponse.ok(res, "Token refreshed.", {
+      tokens: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        accessTokenExpiresIn: JWT_ACCESS_EXPIRE,
+        refreshTokenExpiresIn: JWT_REFRESH_EXPIRE,
+        tokenType: "Bearer" as const,
+      },
+    });
   },
 );

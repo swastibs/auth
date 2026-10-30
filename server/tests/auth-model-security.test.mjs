@@ -20,10 +20,12 @@ const [{ default: User }, { MAX_REFRESH_SESSIONS }] = await Promise.all([
 
 const originalSave = User.prototype.save;
 const originalExists = User.exists;
+const originalFindOneAndUpdate = User.findOneAndUpdate;
 
 afterEach(() => {
   User.prototype.save = originalSave;
   User.exists = originalExists;
+  User.findOneAndUpdate = originalFindOneAndUpdate;
 });
 
 function createUser() {
@@ -172,6 +174,94 @@ test("refresh session supports missing IP metadata", async () => {
   assert.equal(user.refreshTokenSessions.length, 1);
   assert.equal(user.refreshTokenSessions[0].ip, undefined);
   assert.equal(user.refreshTokenSessions[0].userAgent, undefined);
+});
+
+test("refresh rotation uses one atomic update and replaces the matching hash", async () => {
+  const user = createUser();
+  const oldToken = "old-refresh-token-value";
+  const newToken = "new-refresh-token-value";
+  const oldHash = createHash("sha256").update(oldToken).digest("hex");
+  const newHash = createHash("sha256").update(newToken).digest("hex");
+  const existingSession = {
+    token: oldHash,
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+  };
+  user.refreshTokenSessions = [existingSession];
+
+  let callCount = 0;
+  let updateFilter;
+  let updatePipeline;
+  User.findOneAndUpdate = (filter, pipeline) => {
+    callCount += 1;
+    updateFilter = filter;
+    updatePipeline = pipeline;
+    return {
+      select: async () => ({
+        refreshTokenSessions: [
+          {
+            token: newHash,
+            expiresAt: new Date(Date.now() + 86_400_000),
+            createdAt: new Date(),
+            device: "test-device",
+          },
+        ],
+      }),
+    };
+  };
+  User.prototype.save = async () => {
+    throw new Error("rotation must not use document save");
+  };
+
+  const result = await user.rotateRefreshTokenSession(oldToken, newToken, {
+    device: "test-device",
+  });
+
+  assert.deepEqual(result, { rotated: true });
+  assert.equal(callCount, 1);
+  assert.deepEqual(updateFilter, { _id: user._id });
+  const rotationExpression = updatePipeline[0].$set.refreshTokenSessions.$cond;
+  assert.equal(rotationExpression[0].$in[0], oldHash);
+  assert.deepEqual(rotationExpression[2], []);
+  assert.equal(
+    rotationExpression[1].$let.in.$concatArrays[1].$literal[0].token,
+    newHash,
+  );
+  assert.deepEqual(user.refreshTokenSessions.map(({ token }) => token), [newHash]);
+});
+
+test("refresh-token reuse clears all sessions in one atomic update", async () => {
+  const user = createUser();
+  user.refreshTokenSessions = [
+    {
+      token: "other-session-hash",
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+    },
+  ];
+  let callCount = 0;
+  let updatePipeline;
+  User.findOneAndUpdate = (_filter, pipeline) => {
+    callCount += 1;
+    updatePipeline = pipeline;
+    return { select: async () => ({ refreshTokenSessions: [] }) };
+  };
+  User.prototype.save = async () => {
+    throw new Error("reuse revocation must not use document save");
+  };
+
+  const result = await user.rotateRefreshTokenSession(
+    "replayed-token-value",
+    "unused-new-token-value",
+  );
+
+  assert.deepEqual(result, { rotated: false });
+  assert.equal(callCount, 1);
+  assert.deepEqual(
+    updatePipeline[0].$set.refreshTokenSessions.$cond[2],
+    [],
+  );
+  assert.deepEqual(user.refreshTokenSessions, []);
 });
 
 test("login lockout increments, locks, expires, and resets attempts", async () => {
