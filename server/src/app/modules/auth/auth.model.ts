@@ -94,6 +94,9 @@ export interface IUser {
   currentLevel: number;
   currentStreak: number;
   longestStreak: number;
+  lastCompletionDate?: Date;
+  tasksCompletedTotal: number;
+  habitsCompletedTotal: number;
 
   // Meta
   deletedAt?: Date | null;
@@ -291,6 +294,9 @@ const UserSchema = new Schema<IUser, UserModel, IUserMethods>(
     currentLevel: { type: Number, default: 1, min: 1 },
     currentStreak: { type: Number, default: 0, min: 0 },
     longestStreak: { type: Number, default: 0, min: 0 },
+    lastCompletionDate: { type: Date },
+    tasksCompletedTotal: { type: Number, default: 0, min: 0 },
+    habitsCompletedTotal: { type: Number, default: 0, min: 0 },
 
     /* Soft delete */
     deletedAt: { type: Date, default: null },

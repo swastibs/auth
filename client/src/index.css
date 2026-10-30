@@ -265,6 +265,243 @@
 
 /* Respect the user's motion preference: freeze all animation/transition,
    including the orbit rings and the pulse glow above. */
+:root {
+  --ambient-1: oklch(0.98 0.008 60);
+  --ambient-2: oklch(0.96 0.014 60);
+  --ambient-glow: oklch(0.78 0.16 70 / 0.08);
+  --raised-shadow:
+    0 1px 0 oklch(1 0 0 / 0.6) inset,
+    0 1px 2px oklch(0.2 0.02 60 / 0.04),
+    0 8px 24px oklch(0.2 0.02 60 / 0.06);
+  --raised-shadow-hover:
+    0 1px 0 oklch(1 0 0 / 0.7) inset,
+    0 2px 4px oklch(0.2 0.02 60 / 0.06),
+    0 12px 32px oklch(0.2 0.02 60 / 0.1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 160ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+}
+
+.dark {
+  --ambient-1: oklch(0.15 0.025 255);
+  --ambient-2: oklch(0.18 0.035 255);
+  --ambient-glow: oklch(0.82 0.18 70 / 0.1);
+  --raised-shadow:
+    0 1px 0 oklch(1 0 0 / 0.04) inset,
+    0 1px 2px oklch(0 0 0 / 0.3),
+    0 8px 24px oklch(0 0 0 / 0.4);
+  --raised-shadow-hover:
+    0 1px 0 oklch(1 0 0 / 0.06) inset,
+    0 2px 4px oklch(0 0 0 / 0.4),
+    0 12px 32px oklch(0 0 0 / 0.5);
+}
+
+.ambient-surface {
+  position: relative;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 0%, var(--ambient-glow), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, var(--ambient-glow), transparent 60%),
+    linear-gradient(180deg, var(--ambient-1), var(--ambient-2));
+}
+
+.ambient-surface::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.15'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+.surface-card {
+  background: var(--card);
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: 16px;
+  box-shadow: var(--raised-shadow);
+  transition: box-shadow var(--duration-base) var(--ease-out-soft), transform var(--duration-base) var(--ease-out-soft);
+}
+
+.surface-card:hover {
+  box-shadow: var(--raised-shadow-hover);
+}
+
+.physical-check {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid color-mix(in oklch, var(--border) 90%, var(--foreground) 10%);
+  border-radius: 7px;
+  background: var(--background);
+  box-shadow: inset 0 1px 2px oklch(0.2 0.02 60 / 0.06);
+  transition: all var(--duration-fast) var(--ease-spring);
+}
+
+.physical-check:hover {
+  transform: scale(1.06);
+  border-color: var(--accent-atomic);
+}
+
+.physical-check[data-checked="true"] {
+  background: var(--accent-atomic);
+  border-color: var(--accent-atomic);
+  color: var(--accent-atomic-foreground);
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--accent-atomic) 40%, transparent);
+  transform: scale(1.02);
+}
+
+.physical-check[data-checked="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 12px;
+  border: 1.5px solid var(--accent-atomic);
+  opacity: 0;
+  animation: check-ripple 500ms var(--ease-out-soft) forwards;
+}
+
+@keyframes check-ripple {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+.flame-grow {
+  display: inline-block;
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
+.flame-grow[data-size="sm"] {
+  transform: scale(1);
+}
+
+.flame-grow[data-size="md"] {
+  transform: scale(1.2);
+  color: oklch(0.72 0.18 55);
+}
+
+.flame-grow[data-size="lg"] {
+  transform: scale(1.4);
+  color: oklch(0.65 0.22 35);
+  filter: drop-shadow(0 0 6px oklch(0.65 0.22 35 / 0.5));
+}
+
+.flame-grow[data-size="xl"] {
+  transform: scale(1.6);
+  color: oklch(0.6 0.25 20);
+  filter: drop-shadow(0 0 10px oklch(0.6 0.25 20 / 0.7));
+  animation: flame-flicker 2s ease-in-out infinite;
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 10px oklch(0.6 0.25 20 / 0.7));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px oklch(0.6 0.25 20 / 0.9));
+  }
+}
+
+.app-sidebar {
+  width: 240px;
+  border-right: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  background: color-mix(in oklch, var(--background) 60%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: oklch(0 0 0 / 0.4);
+  backdrop-filter: blur(4px);
+  animation: fade-in 120ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted) 60%, transparent);
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+  border-radius: 5px;
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--border) 90%, transparent);
+}
+
+.ritual-cell:hover {
+  transform: scale(1.1);
+}
+
+.ritual-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ritual-cell.ritual-hit {
+  animation: ritual-pop 320ms var(--ease-spring);
+}
+
+@keyframes ritual-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.ritual-cell.ritual-hit::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 10px;
+  border: 1.5px solid var(--accent-atomic);
+  opacity: 0;
+  animation: ritual-ripple 500ms var(--ease-out-soft) forwards;
+  pointer-events: none;
+}
+
+@keyframes ritual-ripple {
+  from {
+    opacity: 0.7;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.ritual-today {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent-atomic) 30%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

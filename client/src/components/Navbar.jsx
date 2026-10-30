@@ -113,12 +113,20 @@ export default function Navbar() {
     };
   }, [isDark]);
 
-  const links = [
+  const guestLinks = [
     ["Habit", "/#habits"],
     ["Task", "/#ai-tasks"],
     ["How It Works", "/#how-it-works"],
     ["Pricing", "/#pricing"],
   ];
+
+  const authLinks = [
+    ["Dashboard", "/dashboard"],
+    ["Tasks", "/tasks"],
+    ["Habits", "/habits"],
+  ];
+
+  const links = user ? authLinks : guestLinks;
 
   const handleNavClick = (href) => {
     if (href.startsWith("/#") && window.location.pathname === "/") {
@@ -170,12 +178,6 @@ export default function Navbar() {
 
           {user ? (
             <div className="flex items-center gap-2.5">
-              <Link
-                to="/dashboard"
-                className="hidden text-sm font-semibold text-muted-foreground no-underline transition-colors hover:text-foreground sm:block"
-              >
-                Dashboard
-              </Link>
               <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-3 py-1 text-xs font-semibold text-foreground">
                 <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
                 {user.name || user.email?.split("@")[0]}

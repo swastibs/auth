@@ -1,5 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./modules/auth/auth.routes.js";
+import tasksRoutes from "./modules/tasks/tasks.routes.js";
+import habitsRoutes from "./modules/habits/habits.routes.js";
 import ApiResponse from "./shared/utils/api-response.util.js";
 
 const routes: Router = Router();
@@ -33,5 +35,7 @@ routes.get("/health", (_req, res) =>
 );
 
 routes.use("/api/v1/auth", authRoutes);
+routes.use("/api/v1/tasks", tasksRoutes);
+routes.use("/api/v1/habits", habitsRoutes);
 
 export default routes;

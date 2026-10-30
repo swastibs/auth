@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   Calendar,
@@ -502,6 +502,33 @@ export default function Dashboard() {
             hint="All-time"
           />
         </section>
+
+        <div className="mb-6 grid gap-3 md:grid-cols-2">
+          <Link
+            to="/tasks"
+            className="rounded-2xl border border-border bg-card p-4 transition hover:border-[var(--accent-atomic)]/40 hover:bg-muted/40"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Task queue</p>
+                <h2 className="mt-2 font-heading text-xl font-semibold">Manage your work</h2>
+              </div>
+              <Zap className="size-5 text-[var(--accent-atomic)]" />
+            </div>
+          </Link>
+          <Link
+            to="/habits"
+            className="rounded-2xl border border-border bg-card p-4 transition hover:border-[var(--accent-atomic)]/40 hover:bg-muted/40"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Habit system</p>
+                <h2 className="mt-2 font-heading text-xl font-semibold">Build your rhythm</h2>
+              </div>
+              <Flame className="size-5 text-[var(--accent-atomic)]" />
+            </div>
+          </Link>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
