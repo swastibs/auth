@@ -34,7 +34,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Navbar from "@/components/Navbar";
+import { AppShell } from "@/components/shell/AppShell";
 import InlineMessage from "@/components/InlineMessage";
 
 const formatDate = (value) => {
@@ -428,9 +428,8 @@ export default function Dashboard() {
   const greetingName = user.name?.split(" ")[0] || "there";
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navbar />
-      <main className="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:px-6">
+    <AppShell>
+      <main className="mx-auto max-w-6xl px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <div
@@ -614,6 +613,6 @@ export default function Dashboard() {
           </button>
         </p>
       </main>
-    </div>
+    </AppShell>
   );
 }

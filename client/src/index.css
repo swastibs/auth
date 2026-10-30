@@ -419,6 +419,43 @@
   backdrop-filter: blur(12px);
 }
 
+.dark .app-sidebar {
+  background:
+    linear-gradient(180deg, oklch(0.2 0.05 255) 0%, oklch(0.145 0.032 245) 100%);
+  border-right-color: color-mix(in oklch, var(--sidebar-border) 90%, oklch(0.8 0.2 270) 10%);
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklch, var(--accent-atomic) 12%, transparent),
+    0 0 0 1px color-mix(in oklch, var(--accent-atomic) 14%, transparent),
+    0 18px 42px oklch(0 0 0 / 0.22);
+}
+
+.dark .app-sidebar .group {
+  background: transparent;
+}
+
+.dark .app-sidebar .group:hover {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--accent-atomic) 10%, transparent),
+    color-mix(in oklch, var(--sidebar-accent) 18%, transparent)
+  );
+}
+
+.dark .app-sidebar .group[data-active="true"],
+.dark .app-sidebar .group.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--accent-atomic) 12%, transparent),
+    color-mix(in oklch, var(--sidebar-accent) 26%, transparent)
+  );
+  box-shadow: inset 1px 0 0 color-mix(in oklch, var(--accent-atomic) 40%, transparent);
+}
+
+.dark .app-sidebar button,
+.dark .app-sidebar a {
+  color: var(--sidebar-foreground);
+}
+
 .palette-backdrop {
   position: fixed;
   inset: 0;

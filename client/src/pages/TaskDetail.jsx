@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Clock3, PencilLine, RotateCcw, Trash2 } from "lucide-react";
 
-import Navbar from "@/components/Navbar";
+import { AppShell } from "@/components/shell/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,18 +48,16 @@ export default function TaskDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
-        <Navbar />
-        <main className="mx-auto max-w-4xl px-4 pb-16 pt-24 text-sm text-muted-foreground">Loading task…</main>
-      </div>
+      <AppShell>
+        <main className="mx-auto max-w-4xl px-4 pb-16 pt-8 text-sm text-muted-foreground sm:px-6 sm:pt-12">Loading task…</main>
+      </AppShell>
     );
   }
 
   if (isError || !task) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
-        <Navbar />
-        <main className="mx-auto max-w-4xl px-4 pb-16 pt-24">
+      <AppShell>
+        <main className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
           <Card>
             <CardHeader>
               <CardTitle>Task not found</CardTitle>
@@ -72,7 +70,7 @@ export default function TaskDetailPage() {
             </CardContent>
           </Card>
         </main>
-      </div>
+      </AppShell>
     );
   }
 
@@ -99,9 +97,8 @@ export default function TaskDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navbar />
-      <main className="mx-auto max-w-4xl px-4 pb-16 pt-24 sm:px-6">
+    <AppShell>
+      <main className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-6 sm:pt-12">
         <div className="mb-4 flex items-center justify-between">
           <Link to="/tasks" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="size-4" /> Back to tasks
@@ -207,6 +204,6 @@ export default function TaskDetailPage() {
           </Card>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
